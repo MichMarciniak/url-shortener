@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SimpleBase;
@@ -5,6 +6,7 @@ using UrlShortener.Api.Data;
 using UrlShortener.Api.Dtos;
 using UrlShortener.Api.Mappers;
 using UrlShortener.Api.Models;
+using UrlShortener.Api.Utils;
 
 namespace UrlShortener.Api.Services;
 
@@ -12,6 +14,7 @@ public class UrlService : IUrlService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<UrlService> _logger;
+    private readonly bool _useRandom = true;
 
     public UrlService(AppDbContext context, ILogger<UrlService> logger)
     {
@@ -22,55 +25,100 @@ public class UrlService : IUrlService
 
     public async Task<UrlResponse?> ShortenUrlAsync(UrlRequest request)
     {
-        if (request.Custom != null)
+        if (!string.IsNullOrEmpty(request.Custom))
         {
-            return await GetCustomUrl(request.Url, request.Custom);
+            return await GenerateCustomUrl(request.Url, request.Custom);
         }
-
-        return await GetUrlFromId(request.Url);
+        
+        return _useRandom 
+            ? await GenerateRandomUrl(request.Url)
+            : await GenerateUrlFromId(request.Url);
     }
     
 
     public async Task<UrlResponse?> GetFullUrlAsync(string shortUrl)
     {
         _logger.LogInformation($"Getting full url from: {shortUrl}");
-        return await _context.Urls
-            .Where(x => x.ShortUrl == shortUrl)
-            .Select(x => x.ToDto())
-            .FirstOrDefaultAsync();
-    }
-
-    private async  Task<UrlResponse> GetUrlFromId(string fullUrl)
-    {
-        var entity = new UrlEntity
-        {
-            FullUrl = fullUrl
-        };
+        var entity = await _context.Urls.FirstOrDefaultAsync(x => x.ShortUrl == shortUrl);
+        if (entity == null) return null;
         
-        _context.Add(entity);
+        entity.LastAccessed = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        int safetyCounter = 0;
+        return entity.ToDto();
+    }
+
+    private async Task<UrlResponse> GenerateRandomUrl(string fullUrl)
+    {
         string shortUrl;
-        
         do
         {
-            int currentId = entity.Id + safetyCounter;
-            var bytes = Encoding.ASCII.GetBytes(currentId.ToString());
-            shortUrl = Base58.Bitcoin.Encode(bytes);
-        }
-        while (await _context.Urls.AnyAsync(x => x.ShortUrl == shortUrl));
+            shortUrl = Base58Generator.Generate();
+        } while (await _context.Urls.AnyAsync(x => x.ShortUrl == shortUrl));
+        
+        var entity = new UrlEntity
+        {
+            FullUrl = fullUrl,
+            ShortUrl = shortUrl, 
+        };
 
-        entity.ShortUrl = shortUrl;
+        _context.Add(entity);
         await _context.SaveChangesAsync();
 
         return new UrlResponse
         {
             Url = shortUrl
         };
+
     }
 
-    private async Task<UrlResponse?> GetCustomUrl(string fullUrl, string customUrl)
+    private async  Task<UrlResponse> GenerateUrlFromId(string fullUrl)
+    {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var entity = new UrlEntity
+            {
+                FullUrl = fullUrl
+            };
+
+            _context.Add(entity);
+            await _context.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+
+            int safetyCounter = 0;
+            string shortUrl;
+
+            do
+            {
+                int currentId = entity.Id + safetyCounter;
+                safetyCounter++;
+                
+                var bytes = Encoding.ASCII.GetBytes(currentId.ToString());
+                shortUrl = Base58.Bitcoin.Encode(bytes);
+            } while (await _context.Urls.AnyAsync(x => x.ShortUrl == shortUrl));
+
+            entity.ShortUrl = shortUrl;
+            await _context.SaveChangesAsync();
+            
+            _logger.LogInformation($"Saved {fullUrl} as {shortUrl}");
+
+            return new UrlResponse
+            {
+                Url = shortUrl
+            };
+
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            _logger.LogWarning("Rollback transaction.");
+            throw;
+        }
+    }
+
+    private async Task<UrlResponse?> GenerateCustomUrl(string fullUrl, string customUrl)
     {
         var exists = await _context.Urls.AnyAsync(x => x.ShortUrl == customUrl);
         if (exists)
