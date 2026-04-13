@@ -33,6 +33,15 @@ public class UrlController : ControllerBase
             return BadRequest("Url already exists.");
         }
 
+        var fullShortUrl = Url.Action(
+            action: "RedirectUrl",
+            controller: "Redirect",
+            values: new { url = response!.Url },
+            protocol: Request.Scheme);
+        
+        response.Url = fullShortUrl;
+
         return Ok(response.Url);
     }
+
 }
