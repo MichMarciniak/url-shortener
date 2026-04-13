@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using UrlShortener.Api.Data;
 using UrlShortener.Api.Services;
+using UrlShortener.Api.Services.Background;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 });
 
 builder.Services.AddScoped<IUrlService, UrlService>();
+builder.Services.AddHostedService<CleanupWorker>();
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

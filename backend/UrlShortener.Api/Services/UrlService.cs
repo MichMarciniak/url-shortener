@@ -48,6 +48,22 @@ public class UrlService : IUrlService
         return entity.ToDto();
     }
 
+    public async Task<int> CleanupOldLinksAsync(int daysOld)
+    {
+        var threshold = DateTime.UtcNow.AddDays(-daysOld);
+
+        int deletedCount = await _context.Urls
+            .Where(x => x.LastAccessed < threshold)
+            .ExecuteDeleteAsync();
+
+        if (deletedCount > 0)
+        {
+            _logger.LogInformation($"Deleted {deletedCount} expired urls");
+        }
+
+        return deletedCount;
+    }
+
     private async Task<UrlResponse> GenerateRandomUrl(string fullUrl)
     {
         string shortUrl;
