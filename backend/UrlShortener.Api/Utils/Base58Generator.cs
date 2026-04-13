@@ -3,12 +3,12 @@ using System.Text;
 
 namespace UrlShortener.Api.Utils;
 
-public class Base58Generator
+public class Base58Generator : ICodeGenerator
 {
     private static readonly char[] Base58Alphabet = 
         "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".ToCharArray();
 
-    public static string Generate(int minLength = 4, int maxLength = 8)
+    public string Generate(int minLength, int maxLength)
     {
         int length = RandomNumberGenerator.GetInt32(minLength, maxLength + 1);
 

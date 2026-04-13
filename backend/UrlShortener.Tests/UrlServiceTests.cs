@@ -14,7 +14,8 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
 {
     private readonly AppDbContext _context;
     private readonly SqliteConnection _connection;
-    private readonly UrlService _service;
+    private readonly Mock<ICodeGenerator> _codeGeneratorMock;
+    private readonly Mock<ILogger<UrlService>> _loggerMock;
     
     public UrlServiceTests()
     {
@@ -27,10 +28,14 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
 
         _context = new AppDbContext(options);
         _context.Database.EnsureCreated();
+        
+        _loggerMock = new Mock<ILogger<UrlService>>();
+        _codeGeneratorMock = new Mock<ICodeGenerator>();
+    }
 
-        var loggerMock = new Mock<ILogger<UrlService>>();
-
-        _service = new UrlService(_context, loggerMock.Object);
+    private UrlService CreateService()
+    {
+        return new UrlService(_context, _loggerMock.Object, _codeGeneratorMock.Object);
     }
 
     public void Dispose()
@@ -49,10 +54,11 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
     public async Task ShortenUrlAsync_WithCustomUrl_ShouldReturnCustomLink()
     {
         //arrange
+        var service = CreateService();
         var request = new UrlRequest { Url = "https://google.com", Custom = "link" };
         
         //act
-        var result = await _service.ShortenUrlAsync(request);
+        var result = await service.ShortenUrlAsync(request);
         
         //assert
         Assert.NotNull(result);
@@ -64,13 +70,14 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
     public async Task ShortenUrlAsync_WithCustomUrl_ShouldReturnNullWhenExists()
     {
         //arrange
+        var service = CreateService();
         var request1 = new UrlRequest { Url = "https://google.com", Custom = "link" };
         var request2 = new UrlRequest { Url = "https://test.com", Custom = "link" };
         
         //act
-        await _service.ShortenUrlAsync(request1);
+        await service.ShortenUrlAsync(request1);
 
-        var result = await _service.ShortenUrlAsync(request2);
+        var result = await service.ShortenUrlAsync(request2);
         
         //assert
         Assert.Null(result);
@@ -79,9 +86,10 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
     [Fact]
     public async Task ShortenUrlAsync_Random_ShouldReturnLink()
     {
+        var service = CreateService();
         var request = new UrlRequest { Url = "https://google.com" };
 
-        var result = await _service.ShortenUrlAsync(request);
+        var result = await service.ShortenUrlAsync(request);
 
         Assert.NotNull(result);
         Assert.True(await _context.Urls.AnyAsync(x => x.FullUrl == request.Url));
@@ -90,6 +98,7 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
     [Fact]
     public async Task CleanupOldLinksAsync_ShouldDeleteOnlyOldLinks()
     {
+        var service = CreateService();
         var oldLink = new UrlEntity
         {
             FullUrl = "old", ShortUrl = "old",
@@ -105,7 +114,7 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
         _context.Urls.AddRange(oldLink, newLink);
         await _context.SaveChangesAsync();
 
-        int deleted = await _service.CleanupOldLinksAsync(30);
+        int deleted = await service.CleanupOldLinksAsync(30);
         
         Assert.Equal(1, deleted);
         Assert.False(await _context.Urls.AnyAsync(x => x.ShortUrl == "old"));
@@ -115,6 +124,7 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
     [Fact]
     public async Task GetFullUrlAsync_ShouldUpdateLastAccessed()
     {
+        var service = CreateService();
         var link = new UrlEntity
         {
             FullUrl = "https://test.com",
@@ -124,10 +134,27 @@ public class UrlServiceTests : IDisposable, IAsyncDisposable
         _context.Urls.Add(link);
         await _context.SaveChangesAsync();
 
-        await _service.GetFullUrlAsync("abc");
+        await service.GetFullUrlAsync("abc");
 
         var updatedLink = await _context.Urls.FirstAsync(x => x.ShortUrl == "abc");
         Assert.True(updatedLink.LastAccessed > DateTime.UtcNow.AddSeconds(-5));
+    }
+
+    [Fact]
+    public async Task ShortenUrlAsync_Random_ShouldCheckCollision()
+    {
+        _codeGeneratorMock.SetupSequence(x => x.Generate())
+            .Returns("taken")
+            .Returns("free");
+        var service = CreateService();
+        var request = new UrlRequest { Url = "https://google.com" };
+
+
+        _context.Urls.Add(new UrlEntity { ShortUrl = "taken", FullUrl = "doesnt matter" });
+        await _context.SaveChangesAsync();
+
+        var result = await service.ShortenUrlAsync(request);
+        Assert.Equal("free", result.Url);
     }
 
 }

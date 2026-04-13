@@ -15,11 +15,13 @@ public class UrlService : IUrlService
     private readonly AppDbContext _context;
     private readonly ILogger<UrlService> _logger;
     private readonly bool _useRandom = true;
+    private readonly ICodeGenerator _codeGenerator;
 
-    public UrlService(AppDbContext context, ILogger<UrlService> logger)
+    public UrlService(AppDbContext context, ILogger<UrlService> logger, ICodeGenerator codeGenerator)
     {
         _context = context;
         _logger = logger;
+        _codeGenerator = codeGenerator;
     }
 
 
@@ -69,7 +71,7 @@ public class UrlService : IUrlService
         string shortUrl;
         do
         {
-            shortUrl = Base58Generator.Generate();
+            shortUrl = _codeGenerator.Generate();
         } while (await _context.Urls.AnyAsync(x => x.ShortUrl == shortUrl));
         
         var entity = new UrlEntity
