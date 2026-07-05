@@ -11,7 +11,7 @@ Url shortening service built in .NET 10
 ## Tech
 - **Framework:** .NET 10 (C#)
 - **Database:** SQLite
-- **Tests:** xUnit, Moq
+- **Tests:** xUnit, Moq, Selenium
 
 ## How to run
 1. Clone this repository

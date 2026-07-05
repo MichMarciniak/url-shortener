@@ -27,10 +27,13 @@ public class UrlController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<UrlResponse>> ShortenUrl(UrlRequest request)
     {
+        if (String.IsNullOrEmpty(request.Url)) return BadRequest("Url is empty");
+        
+        
         var response = await _service.ShortenUrlAsync(request);
         if (response == null && !string.IsNullOrEmpty(request.Custom))
         {
-            return BadRequest("Url already exists.");
+            return BadRequest("Short form already exists.");
         }
 
         var fullShortUrl = Url.Action(

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Shortener</title>
+</head>
+<body>
+    <h1>Url shortener</h1>
+    <form>
+        <input required type="url" name="url" placeholder="Copy your url here"/>
+        <input type="text" name="custom" placeholder="Add your custom url"/>
+        <button type="submit" onclick="shorten(event)">Submit</button>
+    </form>
+
+<script>
+    async function shorten(e) {
+        e.preventDefault();
+        
+        // Remove existing result or error elements if they exist
+        document.querySelector('.result')?.remove();
+        document.querySelector('.error')?.remove();
+
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+        const url = formData.get("url");
+        const custom = formData.get("custom");
+        
+        const body = {
+            url: url,
+            custom: custom !== "" ? custom : null,
+        };
+
+        try {
+            const request = await fetch('/Url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
+
+            const res = await request.text();
+
+            if (request.ok) {
+                const resultEl = document.createElement('p');
+                resultEl.className = 'result';
+                resultEl.innerText = res;
+                document.body.appendChild(resultEl);
+            } else {
+                const errorEl = document.createElement('p');
+                errorEl.className = 'error';
+                errorEl.style.color = 'red';
+                errorEl.innerText = "Error: " + res;
+                document.body.appendChild(errorEl);
+            }
+        } catch (err) {
+            const errorEl = document.createElement('p');
+            errorEl.className = 'error';
+            errorEl.style.color = 'red';
+            errorEl.innerText = "Error: Connection failed.";
+            document.body.appendChild(errorEl);
+        }
+    }
+</script>
+</body>
+</html>
